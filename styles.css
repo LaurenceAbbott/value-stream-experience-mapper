@@ -101,7 +101,8 @@ th { background: #f8fbff; font-size: 13px; text-transform: uppercase; letter-spa
 .standard-card h3 { margin: 0 0 8px; }
 .data-output { white-space: pre-wrap; background: #0b1220; color: #dbeafe; border-radius: 20px; padding: 20px; overflow: auto; max-height: 640px; }
 
-.modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, .64); padding: 40px; display: grid; place-items: center; z-index: 100; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(15, 23, 42, .64); padding: 40px; display: none; place-items: center; z-index: 100; }
+.modal-overlay.is-open { display: grid; }
 .modal { width: min(1150px, 100%); max-height: 92vh; overflow: auto; background: white; border-radius: 30px; padding: 30px; position: relative; box-shadow: var(--shadow); }
 .modal-close { position: absolute; top: 22px; right: 22px; width: 52px; height: 52px; padding: 0; display: grid; place-items: center; font-size: 34px; background: #eef2f6; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 18px; margin-top: 22px; }
