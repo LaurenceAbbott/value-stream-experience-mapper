@@ -1,8 +1,9 @@
+
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Value Stream Experience Mapper</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -12,87 +13,106 @@
       <div class="brand">
         <span class="brand-mark">VS</span>
         <div>
-          <p class="eyebrow">AI-ready prototype</p>
-          <h1>Value Stream Experience Mapper</h1>
+          <strong>Experience Mapper</strong>
+          <small>Value stream journey intelligence</small>
         </div>
       </div>
 
-      <nav class="nav-tabs" aria-label="Main views">
-        <button class="nav-tab is-active" data-view="mapView">Journey map</button>
-        <button class="nav-tab" data-view="signalsView">Signals</button>
-        <button class="nav-tab" data-view="standardsView">Standards</button>
-        <button class="nav-tab" data-view="dataView">Data</button>
+      <nav class="nav">
+        <button class="nav-btn active" data-view="boardView">Journey board</button>
+        <button class="nav-btn" data-view="visualView">Visual map</button>
+        <button class="nav-btn" data-view="compareView">Compare journeys</button>
+        <button class="nav-btn" data-view="standardsView">Signals & standards</button>
+        <button class="nav-btn" data-view="dataView">Data</button>
       </nav>
 
       <div class="sidebar-card">
-        <h2>Purpose</h2>
-        <p>Map journeys across value streams, reveal ownership gaps, and turn repeated UX issues into shared standards.</p>
+        <small>Current journey</small>
+        <select id="journeyFilter"></select>
       </div>
 
-      <button class="primary-btn" id="openStepModalBtn">+ Add journey step</button>
-      <button class="secondary-btn" id="seedDataBtn">Load example</button>
+      <div class="sidebar-card">
+        <small>Context / app</small>
+        <select id="contextFilter"></select>
+      </div>
+
+      <button id="addStepBtn" class="primary full-width">+ Add journey step</button>
+      <button id="loadExampleBtn" class="secondary full-width">Load example data</button>
+      <button id="clearAllBtn" class="danger full-width">Clear all data</button>
     </aside>
 
     <main class="main">
-      <header class="topbar">
+      <header class="hero">
         <div>
-          <p class="eyebrow">Cross-value stream visibility</p>
-          <h2 id="viewTitle">Journey map</h2>
+          <p class="eyebrow">Product Development Lifecycle Tool</p>
+          <h1>Value Stream Experience Mapper</h1>
+          <p>Map journeys across apps, squads and value streams. Find ownership gaps, UX inconsistencies and reusable standards.</p>
         </div>
-        <div class="topbar-actions">
-          <input id="searchInput" class="search-input" placeholder="Search steps, streams, owners, notes..." />
-          <button class="secondary-btn" id="exportBtn">Copy JSON</button>
-          <button class="secondary-btn" id="downloadBtn">Download</button>
+        <div class="hero-actions">
+          <button id="exportBtn" class="secondary">Copy JSON</button>
+          <button id="downloadBtn" class="secondary">Download JSON</button>
+          <label class="import-label">
+            Import JSON
+            <input id="importInput" type="file" accept="application/json" />
+          </label>
         </div>
       </header>
 
-      <section class="summary-grid" aria-label="Summary metrics">
-        <article class="summary-card">
-          <strong id="totalSteps">0</strong>
-          <span>Journey steps</span>
-        </article>
-        <article class="summary-card">
-          <strong id="valueStreamCount">0</strong>
-          <span>Value streams</span>
-        </article>
-        <article class="summary-card warning">
-          <strong id="unknownOwnerCount">0</strong>
-          <span>Ownership gaps</span>
-        </article>
-        <article class="summary-card risk">
-          <strong id="riskCount">0</strong>
-          <span>Experience risks</span>
-        </article>
+      <section class="metrics-grid">
+        <article class="metric-card"><strong id="totalSteps">0</strong><span>Steps</span></article>
+        <article class="metric-card"><strong id="journeyCount">0</strong><span>Journeys</span></article>
+        <article class="metric-card"><strong id="contextCount">0</strong><span>Apps / contexts</span></article>
+        <article class="metric-card"><strong id="riskCount">0</strong><span>High risk steps</span></article>
+        <article class="metric-card"><strong id="unknownOwnerCount">0</strong><span>Owner gaps</span></article>
       </section>
 
-      <section id="mapView" class="view is-active">
-        <div class="section-heading">
-          <div>
-            <h3>Journey map board</h3>
-            <p>Group steps by journey. Drag steps to reorder within a journey.</p>
-          </div>
-          <button class="secondary-btn" id="addJourneyBtn">+ Add empty step</button>
-        </div>
-        <div id="journeyBoard" class="journey-board"></div>
+      <section class="toolbar">
+        <input id="searchInput" type="search" placeholder="Search journey, app, owner, signal, evidence..." />
+        <select id="riskFilter">
+          <option value="all">All risk levels</option>
+          <option value="High">High</option>
+          <option value="Medium">Medium</option>
+          <option value="Low">Low</option>
+        </select>
       </section>
 
-      <section id="signalsView" class="view">
+      <section id="boardView" class="view active">
         <div class="section-heading">
           <div>
-            <h3>Experience signals</h3>
-            <p>Automatically generated from your map data.</p>
+            <h2>Journey board</h2>
+            <p>Grouped by journey and context/app. Use this to see where similar journeys exist across products.</p>
           </div>
         </div>
-        <div id="signalsList" class="signals-list"></div>
+        <div id="board" class="board"></div>
+      </section>
+
+      <section id="visualView" class="view">
+        <div class="section-heading">
+          <div>
+            <h2>Visual journey map</h2>
+            <p>Each step is shown in journey order, with handoffs between value streams and owners.</p>
+          </div>
+        </div>
+        <div id="visualMap" class="visual-map"></div>
+      </section>
+
+      <section id="compareView" class="view">
+        <div class="section-heading">
+          <div>
+            <h2>Compare similar journeys</h2>
+            <p>Useful for journeys like login, search, quote start or document access that exist in multiple apps.</p>
+          </div>
+        </div>
+        <div id="compareTable" class="compare-table-wrap"></div>
       </section>
 
       <section id="standardsView" class="view">
         <div class="section-heading">
           <div>
-            <h3>Suggested design standards</h3>
-            <p>Turn repeated issues into reusable standards across value streams.</p>
+            <h2>Signals & suggested standards</h2>
+            <p>Local rule-based suggestions from your notes and evidence. Later this can become AI-assisted.</p>
           </div>
-          <button class="primary-btn" id="generateStandardsBtn">Generate standards</button>
+          <button id="generateStandardsBtn" class="primary">Generate suggestions</button>
         </div>
         <div id="standardsList" class="standards-list"></div>
       </section>
@@ -100,87 +120,78 @@
       <section id="dataView" class="view">
         <div class="section-heading">
           <div>
-            <h3>Saved data</h3>
-            <p>Your data is saved in this browser using localStorage.</p>
+            <h2>Data</h2>
+            <p>Raw saved journey data. This is what is stored locally in your browser.</p>
           </div>
-          <button class="danger-btn" id="clearAllBtn">Clear all data</button>
         </div>
-        <textarea id="jsonOutput" class="json-output" readonly></textarea>
+        <pre id="dataOutput" class="data-output"></pre>
       </section>
     </main>
   </div>
 
-  <dialog id="stepModal" class="modal">
-    <form method="dialog" class="modal-card" id="stepForm">
-      <div class="modal-header">
-        <div>
-          <p class="eyebrow">Journey step</p>
-          <h2 id="modalTitle">Add journey step</h2>
+  <div id="modalOverlay" class="modal-overlay" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <button id="closeModalBtn" class="modal-close" aria-label="Close">×</button>
+      <p class="eyebrow">Journey step</p>
+      <h2 id="modalTitle">Add journey step</h2>
+
+      <form id="stepForm" class="step-form">
+        <input id="editingId" type="hidden" />
+        <div class="form-grid">
+          <label>Journey
+            <input id="journeyName" required placeholder="e.g. Quote to Buy, Login, Renewal" />
+          </label>
+          <label>Context / app / product
+            <input id="contextName" required placeholder="e.g. Broker Portal, Mobius, Customer Portal" />
+          </label>
+          <label>Step order
+            <input id="stepOrder" type="number" min="1" placeholder="1" />
+          </label>
+          <label>Step name
+            <input id="stepName" required placeholder="e.g. Start quote" />
+          </label>
+          <label>Customer action
+            <input id="customerAction" placeholder="e.g. Customer begins quote journey" />
+          </label>
+          <label>Value stream
+            <input id="valueStream" placeholder="e.g. Digital Experience, Pricing, Policy Admin" />
+          </label>
+          <label>Owner / squad
+            <input id="owner" placeholder="e.g. Portal Squad, TBC" />
+          </label>
+          <label>Pattern / screen
+            <input id="pattern" placeholder="e.g. Start page, form pattern, pricing card" />
+          </label>
+          <label>Customer emotion
+            <select id="emotion">
+              <option>Positive</option>
+              <option>Neutral</option>
+              <option>Frustrated</option>
+              <option>Confused</option>
+              <option>Anxious</option>
+            </select>
+          </label>
+          <label>Risk level
+            <select id="riskLevel">
+              <option>Low</option>
+              <option>Medium</option>
+              <option>High</option>
+            </select>
+          </label>
+          <label class="full">Experience notes
+            <textarea id="notes" placeholder="What works, what breaks, where is the inconsistency?"></textarea>
+          </label>
+          <label class="full">Evidence / data
+            <textarea id="evidence" placeholder="Support tickets, research notes, analytics, survey comments, screenshots etc."></textarea>
+          </label>
         </div>
-        <button type="button" class="icon-btn" id="closeModalBtn">×</button>
-      </div>
-
-      <input type="hidden" id="stepId" />
-
-      <div class="form-grid">
-        <label>
-          Journey
-          <input id="journeyName" placeholder="e.g. Quote to Buy" />
-        </label>
-        <label>
-          Step name
-          <input id="stepName" placeholder="e.g. Enter risk details" />
-        </label>
-        <label>
-          Customer action
-          <input id="customerAction" placeholder="e.g. Completes quote form" />
-        </label>
-        <label>
-          Value stream
-          <input id="valueStream" placeholder="e.g. Digital / Pricing / Policy Admin" />
-        </label>
-        <label>
-          Owner / squad
-          <input id="owner" placeholder="e.g. Squad name, person, or TBC" />
-        </label>
-        <label>
-          Pattern / screen
-          <input id="pattern" placeholder="e.g. Form, pricing card, document upload" />
-        </label>
-        <label>
-          Customer emotion
-          <select id="emotion">
-            <option value="Neutral">Neutral</option>
-            <option value="Positive">Positive</option>
-            <option value="Confused">Confused</option>
-            <option value="Frustrated">Frustrated</option>
-            <option value="Blocked">Blocked</option>
-          </select>
-        </label>
-        <label>
-          Risk level
-          <select id="riskLevel">
-            <option value="Low">Low</option>
-            <option value="Medium">Medium</option>
-            <option value="High">High</option>
-          </select>
-        </label>
-        <label class="full">
-          Experience notes
-          <textarea id="notes" placeholder="What works, what feels inconsistent, where does the journey break?"></textarea>
-        </label>
-        <label class="full">
-          Evidence
-          <textarea id="evidence" placeholder="Support tickets, research notes, customer quotes, Hotjar findings, screenshot references..."></textarea>
-        </label>
-      </div>
-
-      <div class="modal-actions">
-        <button type="button" class="secondary-btn" id="cancelBtn">Cancel</button>
-        <button type="submit" class="primary-btn">Save step</button>
-      </div>
-    </form>
-  </dialog>
+        <div class="modal-actions">
+          <button type="button" id="cancelBtn" class="secondary">Cancel</button>
+          <button type="submit" class="primary">Save step</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
