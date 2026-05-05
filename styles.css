@@ -108,6 +108,9 @@ th { background: #f8fbff; font-size: 13px; text-transform: uppercase; letter-spa
 label { display: grid; gap: 8px; color: #344054; font-weight: 900; }
 label.full { grid-column: 1 / -1; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 12px; margin-top: 22px; }
+.modal-overlay[hidden] {
+  display: none !important;
+}
 
 @media (max-width: 960px) {
   .app-shell { grid-template-columns: 1fr; }
