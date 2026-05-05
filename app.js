@@ -95,10 +95,14 @@ function openModal(entry = null) {
   }
 
   els.modalOverlay.hidden = false;
+    els.modalOverlay.classList.add("is-open");
   $("journeyName").focus();
 }
 
-function closeModal() { els.modalOverlay.hidden = true; }
+function closeModal() {
+  els.modalOverlay.hidden = true;
+  els.modalOverlay.classList.remove("is-open");
+}
 
 function saveStep(event) {
   event.preventDefault();
