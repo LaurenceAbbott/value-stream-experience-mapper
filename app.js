@@ -1,484 +1,374 @@
-const STORAGE_KEY = "valueStreamExperienceMapper.v2";
+const STORAGE_KEY = "vse_mapper_v2";
 
-const dom = {
-  navTabs: document.querySelectorAll(".nav-tab"),
-  views: document.querySelectorAll(".view"),
-  viewTitle: document.getElementById("viewTitle"),
-  searchInput: document.getElementById("searchInput"),
-  journeyBoard: document.getElementById("journeyBoard"),
-  signalsList: document.getElementById("signalsList"),
-  standardsList: document.getElementById("standardsList"),
-  jsonOutput: document.getElementById("jsonOutput"),
-  totalSteps: document.getElementById("totalSteps"),
-  valueStreamCount: document.getElementById("valueStreamCount"),
-  unknownOwnerCount: document.getElementById("unknownOwnerCount"),
-  riskCount: document.getElementById("riskCount"),
-  openStepModalBtn: document.getElementById("openStepModalBtn"),
-  addJourneyBtn: document.getElementById("addJourneyBtn"),
-  stepModal: document.getElementById("stepModal"),
-  stepForm: document.getElementById("stepForm"),
-  modalTitle: document.getElementById("modalTitle"),
-  closeModalBtn: document.getElementById("closeModalBtn"),
-  cancelBtn: document.getElementById("cancelBtn"),
-  seedDataBtn: document.getElementById("seedDataBtn"),
-  exportBtn: document.getElementById("exportBtn"),
-  downloadBtn: document.getElementById("downloadBtn"),
-  clearAllBtn: document.getElementById("clearAllBtn"),
-  generateStandardsBtn: document.getElementById("generateStandardsBtn"),
-  fields: {
-    stepId: document.getElementById("stepId"),
-    journeyName: document.getElementById("journeyName"),
-    stepName: document.getElementById("stepName"),
-    customerAction: document.getElementById("customerAction"),
-    valueStream: document.getElementById("valueStream"),
-    owner: document.getElementById("owner"),
-    pattern: document.getElementById("pattern"),
-    emotion: document.getElementById("emotion"),
-    riskLevel: document.getElementById("riskLevel"),
-    notes: document.getElementById("notes"),
-    evidence: document.getElementById("evidence")
-  }
+let entries = loadEntries();
+let currentView = "boardView";
+
+const $ = (id) => document.getElementById(id);
+const els = {
+  board: $("board"),
+  visualMap: $("visualMap"),
+  compareTable: $("compareTable"),
+  standardsList: $("standardsList"),
+  dataOutput: $("dataOutput"),
+  journeyFilter: $("journeyFilter"),
+  contextFilter: $("contextFilter"),
+  riskFilter: $("riskFilter"),
+  searchInput: $("searchInput"),
+  modalOverlay: $("modalOverlay"),
+  modalTitle: $("modalTitle"),
+  form: $("stepForm"),
+  totalSteps: $("totalSteps"),
+  journeyCount: $("journeyCount"),
+  contextCount: $("contextCount"),
+  riskCount: $("riskCount"),
+  unknownOwnerCount: $("unknownOwnerCount")
 };
 
-let steps = loadSteps();
-let draggedStepId = null;
+const formFields = [
+  "editingId", "journeyName", "contextName", "stepOrder", "stepName", "customerAction",
+  "valueStream", "owner", "pattern", "emotion", "riskLevel", "notes", "evidence"
+];
 
-function loadSteps() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : [];
-  } catch (error) {
-    console.error("Unable to load saved steps", error);
-    return [];
-  }
+document.addEventListener("DOMContentLoaded", () => {
+  wireEvents();
+  render();
+});
+
+function wireEvents() {
+  document.querySelectorAll(".nav-btn").forEach(btn => {
+    btn.addEventListener("click", () => switchView(btn.dataset.view));
+  });
+
+  $("addStepBtn").addEventListener("click", () => openModal());
+  $("closeModalBtn").addEventListener("click", closeModal);
+  $("cancelBtn").addEventListener("click", closeModal);
+  els.modalOverlay.addEventListener("click", (event) => {
+    if (event.target === els.modalOverlay) closeModal();
+  });
+
+  els.form.addEventListener("submit", saveStep);
+  els.searchInput.addEventListener("input", render);
+  els.journeyFilter.addEventListener("change", render);
+  els.contextFilter.addEventListener("change", render);
+  els.riskFilter.addEventListener("change", render);
+
+  $("clearAllBtn").addEventListener("click", clearAll);
+  $("loadExampleBtn").addEventListener("click", loadExampleData);
+  $("exportBtn").addEventListener("click", copyJson);
+  $("downloadBtn").addEventListener("click", downloadJson);
+  $("importInput").addEventListener("change", importJson);
+  $("generateStandardsBtn").addEventListener("click", renderStandards);
 }
 
-function saveSteps() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(steps));
+function loadEntries() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+  catch { return []; }
+}
+
+function persist() { localStorage.setItem(STORAGE_KEY, JSON.stringify(entries)); }
+
+function switchView(viewId) {
+  currentView = viewId;
+  document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === viewId));
+  document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.view === viewId));
   render();
 }
 
-function uuid() {
-  return crypto.randomUUID ? crypto.randomUUID() : `step-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+function openModal(entry = null) {
+  els.form.reset();
+  $("editingId").value = "";
+  els.modalTitle.textContent = entry ? "Edit journey step" : "Add journey step";
+
+  if (entry) {
+    formFields.forEach(field => {
+      if ($(field) && field !== "editingId") $(field).value = entry[field] ?? "";
+    });
+    $("editingId").value = entry.id;
+  } else {
+    $("riskLevel").value = "Low";
+    $("emotion").value = "Neutral";
+    const selectedJourney = els.journeyFilter.value;
+    const selectedContext = els.contextFilter.value;
+    if (selectedJourney !== "all") $("journeyName").value = selectedJourney;
+    if (selectedContext !== "all") $("contextName").value = selectedContext;
+    $("stepOrder").value = getNextOrder($("journeyName").value, $("contextName").value);
+  }
+
+  els.modalOverlay.hidden = false;
+  $("journeyName").focus();
 }
 
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+function closeModal() { els.modalOverlay.hidden = true; }
+
+function saveStep(event) {
+  event.preventDefault();
+  const id = $("editingId").value || createId();
+  const entry = {
+    id,
+    journeyName: $("journeyName").value.trim(),
+    contextName: $("contextName").value.trim(),
+    stepOrder: Number($("stepOrder").value || 999),
+    stepName: $("stepName").value.trim(),
+    customerAction: $("customerAction").value.trim(),
+    valueStream: $("valueStream").value.trim(),
+    owner: $("owner").value.trim(),
+    pattern: $("pattern").value.trim(),
+    emotion: $("emotion").value,
+    riskLevel: $("riskLevel").value,
+    notes: $("notes").value.trim(),
+    evidence: $("evidence").value.trim(),
+    updatedAt: new Date().toISOString(),
+    createdAt: entries.find(e => e.id === id)?.createdAt || new Date().toISOString()
+  };
+
+  const existingIndex = entries.findIndex(e => e.id === id);
+  if (existingIndex >= 0) entries[existingIndex] = entry;
+  else entries.push(entry);
+
+  sortEntries();
+  persist();
+  closeModal();
+  render();
 }
 
-function normalise(value) {
-  return String(value || "").trim();
+function createId() {
+  return window.crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
 }
 
-function getFilteredSteps() {
-  const query = dom.searchInput.value.trim().toLowerCase();
-  if (!query) return steps;
-
-  return steps.filter(step => JSON.stringify(step).toLowerCase().includes(query));
+function getNextOrder(journey, context) {
+  const list = entries.filter(e => (!journey || e.journeyName === journey) && (!context || e.contextName === context));
+  return list.length ? Math.max(...list.map(e => Number(e.stepOrder) || 0)) + 1 : 1;
 }
 
-function getGroupedSteps(list) {
-  return list.reduce((groups, step) => {
-    const key = step.journeyName || "Untitled journey";
-    if (!groups[key]) groups[key] = [];
-    groups[key].push(step);
-    return groups;
-  }, {});
+function sortEntries() {
+  entries.sort((a,b) =>
+    a.journeyName.localeCompare(b.journeyName) ||
+    a.contextName.localeCompare(b.contextName) ||
+    (Number(a.stepOrder) || 999) - (Number(b.stepOrder) || 999)
+  );
 }
 
-function isOwnerGap(step) {
-  const owner = normalise(step.owner).toLowerCase();
-  return !owner || owner.includes("tbc") || owner.includes("unknown") || owner.includes("unclear");
-}
+function getFilteredEntries() {
+  const q = els.searchInput.value.trim().toLowerCase();
+  const journey = els.journeyFilter.value;
+  const context = els.contextFilter.value;
+  const risk = els.riskFilter.value;
 
-function isExperienceRisk(step) {
-  const text = `${step.notes} ${step.evidence} ${step.riskLevel}`.toLowerCase();
-  const riskTerms = ["inconsistent", "duplicate", "duplicated", "handoff", "handover", "manual", "confusing", "unclear", "broken", "break", "gap", "risk", "blocked", "frustrated", "high"];
-  return step.riskLevel === "High" || riskTerms.some(term => text.includes(term));
-}
-
-function riskClass(step) {
-  if (step.riskLevel === "High") return "red";
-  if (step.riskLevel === "Medium") return "amber";
-  return "green";
+  return entries.filter(e => {
+    const text = Object.values(e).join(" ").toLowerCase();
+    return (!q || text.includes(q)) &&
+      (journey === "all" || e.journeyName === journey) &&
+      (context === "all" || e.contextName === context) &&
+      (risk === "all" || e.riskLevel === risk);
+  });
 }
 
 function render() {
-  const filtered = getFilteredSteps();
-  renderSummary(filtered);
-  renderJourneyBoard(filtered);
-  renderSignals(filtered);
-  renderStandards(filtered);
-  renderJson();
+  sortEntries();
+  renderFilters();
+  const list = getFilteredEntries();
+  renderMetrics(list);
+  renderBoard(list);
+  renderVisualMap(list);
+  renderCompare(list);
+  renderStandards(list);
+  els.dataOutput.textContent = JSON.stringify(entries, null, 2);
 }
 
-function renderSummary(list) {
-  const streams = new Set(list.map(step => normalise(step.valueStream).toLowerCase()).filter(Boolean));
-  dom.totalSteps.textContent = list.length;
-  dom.valueStreamCount.textContent = streams.size;
-  dom.unknownOwnerCount.textContent = list.filter(isOwnerGap).length;
-  dom.riskCount.textContent = list.filter(isExperienceRisk).length;
+function renderFilters() {
+  fillSelect(els.journeyFilter, unique(entries.map(e => e.journeyName)), "All journeys");
+  fillSelect(els.contextFilter, unique(entries.map(e => e.contextName)), "All contexts / apps");
 }
 
-function renderJourneyBoard(list) {
-  if (!list.length) {
-    dom.journeyBoard.innerHTML = `<div class="empty-state"><h3>No journey steps yet</h3><p>Add your first step, or load the example data to see how this works.</p></div>`;
-    return;
-  }
-
-  const groups = getGroupedSteps(list);
-  dom.journeyBoard.innerHTML = Object.entries(groups).map(([journey, groupSteps]) => `
-    <section class="journey-group" data-journey="${escapeHtml(journey)}">
-      <div class="journey-group-header">
-        <div>
-          <h3>${escapeHtml(journey)}</h3>
-          <span>${groupSteps.length} step${groupSteps.length === 1 ? "" : "s"}</span>
-        </div>
-      </div>
-      ${groupSteps.map(step => renderStepRow(step)).join("")}
-    </section>
-  `).join("");
-
-  bindStepButtons();
-  bindDragAndDrop();
+function fillSelect(select, values, label) {
+  const current = select.value || "all";
+  select.innerHTML = `<option value="all">${escapeHtml(label)}</option>` + values.map(v => `<option value="${escapeAttr(v)}">${escapeHtml(v)}</option>`).join("");
+  select.value = [...values, "all"].includes(current) ? current : "all";
 }
 
-function renderStepRow(step) {
-  return `
-    <article class="step-row" draggable="true" data-step-id="${escapeHtml(step.id)}">
-      <div class="step-cell">
-        <span class="step-label">Step</span>
-        <div class="step-value">${escapeHtml(step.stepName || "Untitled step")}</div>
-      </div>
-      <div class="step-cell">
-        <span class="step-label">Customer action</span>
-        <div class="step-value">${escapeHtml(step.customerAction || "Not captured")}</div>
-      </div>
-      <div class="step-cell">
-        <span class="step-label">Value stream</span>
-        <div class="step-value">${escapeHtml(step.valueStream || "TBC")}</div>
-      </div>
-      <div class="step-cell">
-        <span class="step-label">Owner</span>
-        <div class="pills">
-          <span class="pill ${isOwnerGap(step) ? "amber" : "green"}">${escapeHtml(step.owner || "Owner TBC")}</span>
-        </div>
-      </div>
-      <div class="step-cell">
-        <span class="step-label">Signals</span>
-        <div class="pills">
-          <span class="pill">${escapeHtml(step.pattern || "Pattern TBC")}</span>
-          <span class="pill ${riskClass(step)}">${escapeHtml(step.riskLevel || "Low")} risk</span>
-          <span class="pill">${escapeHtml(step.emotion || "Neutral")}</span>
-        </div>
-      </div>
-      <div class="step-actions">
-        <button class="small-btn" data-edit="${escapeHtml(step.id)}">Edit</button>
-        <button class="small-btn delete" data-delete="${escapeHtml(step.id)}">Delete</button>
-      </div>
-    </article>
-  `;
+function unique(values) { return [...new Set(values.filter(Boolean))].sort((a,b) => a.localeCompare(b)); }
+
+function renderMetrics(list) {
+  els.totalSteps.textContent = list.length;
+  els.journeyCount.textContent = unique(list.map(e => e.journeyName)).length;
+  els.contextCount.textContent = unique(list.map(e => e.contextName)).length;
+  els.riskCount.textContent = list.filter(e => e.riskLevel === "High").length;
+  els.unknownOwnerCount.textContent = list.filter(hasOwnerGap).length;
 }
 
-function renderSignals(list) {
-  const signals = [];
-  const ownerGaps = list.filter(isOwnerGap);
-  const risks = list.filter(isExperienceRisk);
-  const streamCounts = countBy(list, "valueStream");
-  const patternCounts = countBy(list, "pattern");
-
-  if (ownerGaps.length) {
-    signals.push({
-      title: `${ownerGaps.length} ownership gap${ownerGaps.length === 1 ? "" : "s"}`,
-      text: "Some journey steps do not have a clear owner. These are good candidates for value stream alignment conversations."
-    });
-  }
-
-  if (risks.length) {
-    signals.push({
-      title: `${risks.length} experience risk${risks.length === 1 ? "" : "s"}`,
-      text: "Risk language appears in notes/evidence, or risk level has been marked as high. Review these first."
-    });
-  }
-
-  Object.entries(streamCounts).forEach(([stream, count]) => {
-    if (stream && count >= 3) {
-      signals.push({ title: `${stream} owns ${count} steps`, text: "This value stream appears heavily involved in the mapped journey." });
-    }
-  });
-
-  Object.entries(patternCounts).forEach(([pattern, count]) => {
-    if (pattern && count >= 2) {
-      signals.push({ title: `Repeated pattern: ${pattern}`, text: "A repeated pattern is a good candidate for a shared design standard." });
-    }
-  });
-
-  dom.signalsList.innerHTML = signals.length
-    ? signals.map(signal => `<article class="signal-card"><h4>${escapeHtml(signal.title)}</h4><p>${escapeHtml(signal.text)}</p></article>`).join("")
-    : `<div class="empty-state"><h3>No signals yet</h3><p>Add more steps, notes and owners to generate useful signals.</p></div>`;
+function renderBoard(list) {
+  if (!list.length) { els.board.innerHTML = `<div class="empty">No journey steps yet. Add a step or load example data.</div>`; return; }
+  const grouped = groupBy(list, e => `${e.journeyName}|||${e.contextName}`);
+  els.board.innerHTML = Object.entries(grouped).map(([key, group]) => {
+    const [journey, context] = key.split("|||");
+    return `<article class="group">
+      <div class="group-header">
+        <div><h3>${escapeHtml(journey)}</h3><div class="group-meta"><span class="pill">${escapeHtml(context)}</span><span class="pill grey">${group.length} steps</span></div></div>
+      </div>
+      <div class="steps-grid">${group.map(renderStepCard).join("")}</div>
+    </article>`;
+  }).join("");
+  wireCardButtons();
 }
 
-function renderStandards(list) {
-  const standards = generateStandards(list);
-  dom.standardsList.innerHTML = standards.length
-    ? standards.map(standard => `<article class="standard-card"><h4>${escapeHtml(standard.title)}</h4><p>${escapeHtml(standard.text)}</p></article>`).join("")
-    : `<div class="empty-state"><h3>No standards generated yet</h3><p>Add repeated patterns or click Generate standards after mapping a journey.</p></div>`;
+function renderStepCard(e) {
+  const riskClass = e.riskLevel.toLowerCase();
+  const ownerPill = hasOwnerGap(e) ? `<span class="pill amber">Owner TBC</span>` : `<span class="pill green">${escapeHtml(e.owner)}</span>`;
+  return `<article class="step-card ${riskClass}">
+    <span class="pill grey">Step ${escapeHtml(e.stepOrder)}</span>
+    <h4>${escapeHtml(e.stepName)}</h4>
+    <div class="group-meta">
+      <span class="pill">${escapeHtml(e.valueStream || "Value stream TBC")}</span>
+      ${ownerPill}
+      <span class="pill ${e.riskLevel === "High" ? "red" : e.riskLevel === "Medium" ? "amber" : "green"}">${escapeHtml(e.riskLevel)} risk</span>
+    </div>
+    <p class="card-note"><strong>Customer:</strong> ${escapeHtml(e.customerAction || "Not captured")}</p>
+    <p class="card-note"><strong>Pattern:</strong> ${escapeHtml(e.pattern || "Not captured")}</p>
+    <p class="card-note">${escapeHtml(e.notes || "No notes yet")}</p>
+    <div class="step-actions">
+      <button class="secondary" data-edit="${e.id}">Edit</button>
+      <button class="danger" data-delete="${e.id}">Delete</button>
+    </div>
+  </article>`;
 }
 
-function renderJson() {
-  dom.jsonOutput.value = JSON.stringify(steps, null, 2);
+function renderVisualMap(list) {
+  if (!list.length) { els.visualMap.innerHTML = `<div class="empty">No map to visualise yet.</div>`; return; }
+  const grouped = groupBy(list, e => `${e.journeyName}|||${e.contextName}`);
+  els.visualMap.innerHTML = Object.entries(grouped).map(([key, group]) => {
+    const [journey, context] = key.split("|||");
+    return `<div class="lane"><h3>${escapeHtml(journey)} <span class="pill">${escapeHtml(context)}</span></h3>
+      <div class="timeline">${group.map(e => `<div class="timeline-card">
+        <span class="pill grey">${escapeHtml(e.stepOrder)}</span>
+        <strong>${escapeHtml(e.stepName)}</strong>
+        <p>${escapeHtml(e.customerAction || "")}</p>
+        <span class="pill">${escapeHtml(e.valueStream || "Value stream TBC")}</span>
+        <span class="pill ${hasOwnerGap(e) ? "amber" : "green"}">${escapeHtml(e.owner || "Owner TBC")}</span>
+      </div>`).join("")}</div></div>`;
+  }).join("");
 }
 
-function countBy(list, key) {
+function renderCompare(list) {
+  const selectedJourney = els.journeyFilter.value;
+  const compareList = selectedJourney === "all" && list.length ? list.filter(e => e.journeyName === list[0].journeyName) : list;
+  if (!compareList.length) { els.compareTable.innerHTML = `<div class="empty">Choose or add a journey to compare across apps.</div>`; return; }
+  const contexts = unique(compareList.map(e => e.contextName));
+  const steps = unique(compareList.map(e => String(e.stepOrder).padStart(3,"0") + "|||" + e.stepName));
+  els.compareTable.innerHTML = `<table><thead><tr><th>Step</th>${contexts.map(c => `<th>${escapeHtml(c)}</th>`).join("")}</tr></thead><tbody>
+    ${steps.map(stepKey => {
+      const [order, stepName] = stepKey.split("|||");
+      return `<tr><td><strong>${Number(order)}. ${escapeHtml(stepName)}</strong></td>${contexts.map(context => {
+        const e = compareList.find(x => x.contextName === context && x.stepName === stepName);
+        return `<td>${e ? `<strong>${escapeHtml(e.pattern || "Pattern TBC")}</strong><br><span class="pill ${e.riskLevel === "High" ? "red" : e.riskLevel === "Medium" ? "amber" : "green"}">${escapeHtml(e.riskLevel)}</span><p>${escapeHtml(e.notes || "")}</p>` : `<span class="pill grey">Missing / not mapped</span>`}</td>`;
+      }).join("")}</tr>`;
+    }).join("")}</tbody></table>`;
+}
+
+function renderStandards(sourceList = null) {
+  const list = Array.isArray(sourceList) ? sourceList : getFilteredEntries();
+  const suggestions = generateStandardSuggestions(list);
+  if (!suggestions.length) { els.standardsList.innerHTML = `<div class="empty">No standards suggested yet. Add notes with words like inconsistent, duplicate, confusing, manual, TBC or handoff.</div>`; return; }
+  els.standardsList.innerHTML = suggestions.map(s => `<article class="standard-card">
+    <span class="pill ${s.severity === "High" ? "red" : "amber"}">${escapeHtml(s.severity)} priority</span>
+    <h3>${escapeHtml(s.title)}</h3>
+    <p><strong>Signal:</strong> ${escapeHtml(s.signal)}</p>
+    <p><strong>Suggested standard:</strong> ${escapeHtml(s.standard)}</p>
+    <p><strong>Evidence:</strong> ${escapeHtml(s.count)} related step(s)</p>
+  </article>`).join("");
+}
+
+function generateStandardSuggestions(list) {
+  const rules = [
+    { key: "owner", terms: ["tbc", "unknown", "unclear"], title: "Clarify ownership for journey steps", signal: "One or more steps have unclear ownership.", standard: "Every journey step must have a named squad or accountable owner before it progresses into delivery.", severity: "High" },
+    { key: "forms", terms: ["form", "validation", "field", "error"], title: "Create a unified form standard", signal: "Form behaviour or validation appears across multiple journey steps.", standard: "All forms should use a shared pattern for labels, field order, validation, error messaging and save/continue behaviour.", severity: "High" },
+    { key: "terminology", terms: ["terminology", "wording", "language", "label"], title: "Standardise terminology across products", signal: "Different language may be used for the same customer concept.", standard: "Create a shared terminology guide for high-frequency customer and policy concepts across all apps.", severity: "Medium" },
+    { key: "duplicate", terms: ["duplicate", "duplicated", "same problem", "rebuild"], title: "Reduce duplicated UX patterns", signal: "Teams may be solving the same experience problem separately.", standard: "Before designing a new pattern, teams should check the design system and cross-stream pattern library for an existing solution.", severity: "Medium" },
+    { key: "handoff", terms: ["handoff", "handover", "context lost", "break", "broken", "jarring"], title: "Improve cross-stream handoffs", signal: "The customer experience may break when ownership moves between streams.", standard: "Cross-stream handoffs should preserve customer context, terminology and visual continuity between systems.", severity: "High" }
+  ];
+
+  return rules.map(rule => {
+    const matches = list.filter(e => rule.terms.some(t => `${e.owner} ${e.notes} ${e.evidence} ${e.pattern}`.toLowerCase().includes(t)));
+    return matches.length ? { ...rule, count: matches.length } : null;
+  }).filter(Boolean);
+}
+
+function wireCardButtons() {
+  document.querySelectorAll("[data-edit]").forEach(btn => btn.addEventListener("click", () => {
+    const entry = entries.find(e => e.id === btn.dataset.edit);
+    if (entry) openModal(entry);
+  }));
+  document.querySelectorAll("[data-delete]").forEach(btn => btn.addEventListener("click", () => {
+    if (!confirm("Delete this journey step?")) return;
+    entries = entries.filter(e => e.id !== btn.dataset.delete);
+    persist();
+    render();
+  }));
+}
+
+function hasOwnerGap(e) {
+  const owner = (e.owner || "").toLowerCase();
+  return !owner || owner.includes("tbc") || owner.includes("unknown") || owner.includes("unclear");
+}
+
+function groupBy(list, getKey) {
   return list.reduce((acc, item) => {
-    const value = normalise(item[key]);
-    if (!value) return acc;
-    acc[value] = (acc[value] || 0) + 1;
+    const key = getKey(item);
+    acc[key] = acc[key] || [];
+    acc[key].push(item);
     return acc;
   }, {});
 }
 
-function generateStandards(list) {
-  const standards = [];
-  const repeatedPatterns = Object.entries(countBy(list, "pattern")).filter(([, count]) => count >= 2);
-
-  repeatedPatterns.forEach(([pattern]) => {
-    standards.push({
-      title: `${pattern} standard`,
-      text: `Create one shared approach for ${pattern.toLowerCase()} across value streams so teams do not solve the same experience problem differently.`
-    });
-  });
-
-  if (list.some(isOwnerGap)) {
-    standards.push({
-      title: "Ownership clarity standard",
-      text: "Every journey step should have a named value stream owner before work moves into delivery. If ownership is shared, the decision owner must still be clear."
-    });
-  }
-
-  if (list.some(step => step.notes.toLowerCase().includes("terminology") || step.notes.toLowerCase().includes("wording"))) {
-    standards.push({
-      title: "Terminology standard",
-      text: "Use consistent customer-facing language across streams, especially where customers move between quote, policy admin and portal experiences."
-    });
-  }
-
-  if (list.some(step => step.notes.toLowerCase().includes("handoff") || step.notes.toLowerCase().includes("handover"))) {
-    standards.push({
-      title: "Handoff standard",
-      text: "When a journey crosses value streams, customer context should be preserved and the transition should feel like one continuous experience."
-    });
-  }
-
-  return standards;
-}
-
-function bindStepButtons() {
-  document.querySelectorAll("[data-edit]").forEach(button => {
-    button.addEventListener("click", () => openModal(button.dataset.edit));
-  });
-
-  document.querySelectorAll("[data-delete]").forEach(button => {
-    button.addEventListener("click", () => {
-      if (!confirm("Delete this journey step?")) return;
-      steps = steps.filter(step => step.id !== button.dataset.delete);
-      saveSteps();
-    });
-  });
-}
-
-function bindDragAndDrop() {
-  document.querySelectorAll(".step-row").forEach(row => {
-    row.addEventListener("dragstart", () => {
-      draggedStepId = row.dataset.stepId;
-      row.classList.add("is-dragging");
-    });
-
-    row.addEventListener("dragend", () => {
-      row.classList.remove("is-dragging");
-      draggedStepId = null;
-    });
-
-    row.addEventListener("dragover", event => event.preventDefault());
-
-    row.addEventListener("drop", event => {
-      event.preventDefault();
-      const targetId = row.dataset.stepId;
-      if (!draggedStepId || draggedStepId === targetId) return;
-      reorderSteps(draggedStepId, targetId);
-    });
-  });
-}
-
-function reorderSteps(fromId, toId) {
-  const fromIndex = steps.findIndex(step => step.id === fromId);
-  const toIndex = steps.findIndex(step => step.id === toId);
-  if (fromIndex < 0 || toIndex < 0) return;
-  const [moved] = steps.splice(fromIndex, 1);
-  steps.splice(toIndex, 0, moved);
-  saveSteps();
-}
-
-function openModal(stepId = null) {
-  dom.stepForm.reset();
-  dom.fields.stepId.value = "";
-
-  if (stepId) {
-    const step = steps.find(item => item.id === stepId);
-    if (!step) return;
-    dom.modalTitle.textContent = "Edit journey step";
-    Object.entries(dom.fields).forEach(([key, field]) => {
-      field.value = step[key] || "";
-    });
-  } else {
-    dom.modalTitle.textContent = "Add journey step";
-    dom.fields.riskLevel.value = "Low";
-    dom.fields.emotion.value = "Neutral";
-  }
-
-  dom.stepModal.showModal();
-}
-
-function closeModal() {
-  dom.stepModal.close();
-}
-
-function saveStepFromForm() {
-  const formData = Object.fromEntries(Object.entries(dom.fields).map(([key, field]) => [key, normalise(field.value)]));
-
-  if (!formData.journeyName && !formData.stepName && !formData.customerAction) {
-    alert("Add at least a journey, step name, or customer action.");
-    return;
-  }
-
-  const existingIndex = steps.findIndex(step => step.id === formData.stepId);
-  const nextStep = {
-    id: formData.stepId || uuid(),
-    journeyName: formData.journeyName || "Untitled journey",
-    stepName: formData.stepName || "Untitled step",
-    customerAction: formData.customerAction,
-    valueStream: formData.valueStream,
-    owner: formData.owner,
-    pattern: formData.pattern,
-    emotion: formData.emotion || "Neutral",
-    riskLevel: formData.riskLevel || "Low",
-    notes: formData.notes,
-    evidence: formData.evidence,
-    updatedAt: new Date().toISOString()
-  };
-
-  if (existingIndex >= 0) {
-    steps[existingIndex] = nextStep;
-  } else {
-    steps.push(nextStep);
-  }
-
-  saveSteps();
-  closeModal();
-}
-
-function seedData() {
-  if (steps.length && !confirm("This will add example data to your existing map. Continue?")) return;
-  const example = [
-    {
-      journeyName: "Quote to Buy",
-      stepName: "Start quote",
-      customerAction: "Customer begins a quote journey from the portal",
-      valueStream: "Digital Experience",
-      owner: "Portal Squad",
-      pattern: "Start page",
-      emotion: "Positive",
-      riskLevel: "Low",
-      notes: "Clear entry point, but terminology differs from policy admin screens.",
-      evidence: "Observed in current portal prototype."
-    },
-    {
-      journeyName: "Quote to Buy",
-      stepName: "Enter risk details",
-      customerAction: "Customer completes risk and personal details",
-      valueStream: "Quote and Buy",
-      owner: "TBC",
-      pattern: "Form pattern",
-      emotion: "Confused",
-      riskLevel: "Medium",
-      notes: "Long forms, inconsistent validation and unclear field help.",
-      evidence: "Support feedback mentions confusion around required fields."
-    },
-    {
-      journeyName: "Quote to Buy",
-      stepName: "Review price",
-      customerAction: "Customer compares price and cover options",
-      valueStream: "Pricing",
-      owner: "Pricing Squad",
-      pattern: "Pricing card",
-      emotion: "Neutral",
-      riskLevel: "Medium",
-      notes: "Pricing display uses different layout and labels compared with renewal screens.",
-      evidence: "Similar pricing cards exist in multiple products."
-    },
-    {
-      journeyName: "Quote to Buy",
-      stepName: "Receive documents",
-      customerAction: "Customer receives policy confirmation and documents",
-      valueStream: "Policy Admin",
-      owner: "Policy Squad",
-      pattern: "Document list",
-      emotion: "Frustrated",
-      riskLevel: "High",
-      notes: "Handoff feels broken. Customer context is lost and the UI feels like a different product.",
-      evidence: "Known handoff issue between quote and policy admin."
-    }
-  ].map(item => ({ id: uuid(), updatedAt: new Date().toISOString(), ...item }));
-
-  steps = [...steps, ...example];
-  saveSteps();
+function clearAll() {
+  if (!confirm("Clear all saved data from this browser?")) return;
+  entries = [];
+  persist();
+  render();
 }
 
 function copyJson() {
-  const json = JSON.stringify(steps, null, 2);
-  navigator.clipboard.writeText(json).then(() => alert("JSON copied to clipboard."));
+  navigator.clipboard.writeText(JSON.stringify(entries, null, 2)).then(() => alert("JSON copied to clipboard."));
 }
 
 function downloadJson() {
-  const blob = new Blob([JSON.stringify(steps, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify(entries, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "value-stream-experience-map.json";
-  link.click();
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "value-stream-experience-map.json";
+  a.click();
   URL.revokeObjectURL(url);
 }
 
-function switchView(viewId) {
-  dom.views.forEach(view => view.classList.toggle("is-active", view.id === viewId));
-  dom.navTabs.forEach(tab => tab.classList.toggle("is-active", tab.dataset.view === viewId));
-  const activeTab = [...dom.navTabs].find(tab => tab.dataset.view === viewId);
-  dom.viewTitle.textContent = activeTab ? activeTab.textContent : "Journey map";
+function importJson(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const imported = JSON.parse(reader.result);
+      if (!Array.isArray(imported)) throw new Error("JSON must be an array");
+      entries = imported;
+      persist();
+      render();
+    } catch (error) { alert("Could not import JSON: " + error.message); }
+  };
+  reader.readAsText(file);
 }
 
-dom.navTabs.forEach(tab => tab.addEventListener("click", () => switchView(tab.dataset.view)));
-dom.openStepModalBtn.addEventListener("click", () => openModal());
-dom.addJourneyBtn.addEventListener("click", () => openModal());
-dom.closeModalBtn.addEventListener("click", closeModal);
-dom.cancelBtn.addEventListener("click", closeModal);
-dom.stepForm.addEventListener("submit", event => {
-  event.preventDefault();
-  saveStepFromForm();
-});
-dom.searchInput.addEventListener("input", render);
-dom.seedDataBtn.addEventListener("click", seedData);
-dom.exportBtn.addEventListener("click", copyJson);
-dom.downloadBtn.addEventListener("click", downloadJson);
-dom.generateStandardsBtn.addEventListener("click", () => switchView("standardsView"));
-dom.clearAllBtn.addEventListener("click", () => {
-  if (!confirm("Clear all saved data from this browser?")) return;
-  steps = [];
-  saveSteps();
-});
+function loadExampleData() {
+  entries = [
+    { id:createId(), journeyName:"Login", contextName:"Broker Portal", stepOrder:1, stepName:"Open login", customerAction:"User opens the portal login page", valueStream:"Digital Experience", owner:"Portal Squad", pattern:"Login page", emotion:"Neutral", riskLevel:"Medium", notes:"Login entry point uses different terminology from Mobius.", evidence:"Observed in current portal prototype.", createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() },
+    { id:createId(), journeyName:"Login", contextName:"Mobius", stepOrder:1, stepName:"Open login", customerAction:"User opens Mobius login", valueStream:"Core Platform", owner:"TBC", pattern:"Legacy login", emotion:"Confused", riskLevel:"High", notes:"Owner unclear and experience feels jarring compared with portal.", evidence:"Known cross-product inconsistency.", createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() },
+    { id:createId(), journeyName:"Quote to Buy", contextName:"Customer Portal", stepOrder:1, stepName:"Start quote", customerAction:"Customer begins quote journey", valueStream:"Digital Experience", owner:"Portal Squad", pattern:"Start page", emotion:"Positive", riskLevel:"Low", notes:"Clear entry point.", evidence:"Prototype review.", createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() },
+    { id:createId(), journeyName:"Quote to Buy", contextName:"Customer Portal", stepOrder:2, stepName:"Enter risk details", customerAction:"Customer enters cover and risk information", valueStream:"Pricing", owner:"Pricing Squad", pattern:"Form pattern", emotion:"Neutral", riskLevel:"High", notes:"Form validation differs from policy admin screens; possible duplicate pattern.", evidence:"Prototype comparison.", createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() },
+    { id:createId(), journeyName:"Quote to Buy", contextName:"Broker Portal", stepOrder:2, stepName:"Enter risk details", customerAction:"Broker enters customer risk information", valueStream:"Pricing", owner:"Broker Platform Squad", pattern:"Different form pattern", emotion:"Frustrated", riskLevel:"Medium", notes:"Same problem solved differently. Terminology differs.", evidence:"Broker journey review.", createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() }
+  ];
+  persist();
+  render();
+}
 
-render();
+function escapeHtml(value) {
+  return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&#039;");
+}
+function escapeAttr(value) { return escapeHtml(value); }
