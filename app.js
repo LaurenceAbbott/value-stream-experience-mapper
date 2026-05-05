@@ -238,18 +238,49 @@ function renderStepCard(e) {
 
 function renderVisualMap(list) {
   if (!list.length) { els.visualMap.innerHTML = `<div class="empty">No map to visualise yet.</div>`; return; }
-  const grouped = groupBy(list, e => `${e.journeyName}|||${e.contextName}`);
-  els.visualMap.innerHTML = Object.entries(grouped).map(([key, group]) => {
-    const [journey, context] = key.split("|||");
-    return `<div class="lane"><h3>${escapeHtml(journey)} <span class="pill">${escapeHtml(context)}</span></h3>
-      <div class="timeline">${group.map(e => `<div class="timeline-card">
-        <span class="pill grey">${escapeHtml(e.stepOrder)}</span>
-        <strong>${escapeHtml(e.stepName)}</strong>
-        <p>${escapeHtml(e.customerAction || "")}</p>
-        <span class="pill">${escapeHtml(e.valueStream || "Value stream TBC")}</span>
-        <span class="pill ${hasOwnerGap(e) ? "amber" : "green"}">${escapeHtml(e.owner || "Owner TBC")}</span>
-      </div>`).join("")}</div></div>`;
+  const grouped = groupBy(list, e => e.journeyName);
+  els.visualMap.innerHTML = Object.entries(grouped).map(([journey, group]) => {
+    const phases = [...group].sort((a, b) => (Number(a.stepOrder) || 999) - (Number(b.stepOrder) || 999));
+    const feelingPoints = phases.map((e, index) => {
+      const mood = getMoodMeta(e.emotion);
+      const left = phases.length === 1 ? 50 : (index / (phases.length - 1)) * 100;
+      return `<span class="feeling-node" style="left:${left}%" title="${escapeAttr(e.stepName)} · ${escapeAttr(e.contextName)}">${mood.icon}</span>`;
+    }).join("");
+
+    return `<article class="journey-map">
+      <header class="journey-map-header"><h3>${escapeHtml(journey)}</h3><span class="pill grey">${phases.length} mapped steps</span></header>
+      <div class="journey-grid" style="--phase-count:${Math.max(phases.length, 1)}">
+        <div class="row-label">Phases</div>
+        ${phases.map(e => `<div class="phase-cell"><strong>${escapeHtml(e.stepName)}</strong><small>${escapeHtml(e.contextName)}</small></div>`).join("")}
+
+        <div class="row-label">Action</div>
+        ${phases.map(e => `<div class="grid-cell"><span class="sticky-note">${escapeHtml(e.customerAction || "Action TBC")}</span></div>`).join("")}
+
+        <div class="row-label">Touchpoints</div>
+        ${phases.map(e => `<div class="grid-cell"><span class="pill">${escapeHtml(e.valueStream || "Value stream TBC")}</span><span class="pill ${hasOwnerGap(e) ? "amber" : "green"}">${escapeHtml(e.owner || "Owner TBC")}</span></div>`).join("")}
+
+        <div class="row-label">Feelings</div>
+        <div class="feelings-track" style="grid-column:2 / span ${Math.max(phases.length, 1)}"><div class="feeling-line"></div>${feelingPoints}</div>
+
+        <div class="row-label">Pain points</div>
+        ${phases.map(e => `<div class="grid-cell">${escapeHtml(e.riskLevel === "Low" ? "Low friction" : (e.notes || "Risk or blocker not captured"))}</div>`).join("")}
+
+        <div class="row-label">Opportunities</div>
+        ${phases.map(e => `<div class="grid-cell">${escapeHtml(e.evidence || "Opportunity notes to be added")}</div>`).join("")}
+      </div>
+    </article>`;
   }).join("");
+}
+
+function getMoodMeta(emotion = "Neutral") {
+  const map = {
+    Positive: { icon: "😍" },
+    Neutral: { icon: "🙂" },
+    Frustrated: { icon: "😕" },
+    Confused: { icon: "😵" },
+    Anxious: { icon: "😰" }
+  };
+  return map[emotion] || map.Neutral;
 }
 
 function renderCompare(list) {
