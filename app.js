@@ -244,20 +244,20 @@ function renderVisualMap(list) {
     const feelingPoints = phases.map((e, index) => {
       const mood = getMoodMeta(e.emotion);
       const left = phases.length === 1 ? 50 : (index / (phases.length - 1)) * 100;
-      return `<span class="feeling-node" style="left:${left}%" title="${escapeAttr(e.stepName)} · ${escapeAttr(e.contextName)}">${mood.icon}</span>`;
+       return `<span class="feeling-node" style="left:${left}%; top:${mood.level}%" title="${escapeAttr(e.contextName)} · ${escapeAttr(e.stepName)}">${mood.icon}</span>`;
     }).join("");
 
     return `<article class="journey-map">
-      <header class="journey-map-header"><h3>${escapeHtml(journey)}</h3><span class="pill grey">${phases.length} mapped steps</span></header>
+      <header class="journey-map-header"><h3>${escapeHtml(journey)}</h3><span class="pill grey">${getHierarchySummary(phases)}</span></header>
       <div class="journey-grid" style="--phase-count:${Math.max(phases.length, 1)}">
-        <div class="row-label">Phases</div>
-        ${phases.map(e => `<div class="phase-cell"><strong>${escapeHtml(e.stepName)}</strong><small>${escapeHtml(e.contextName)}</small></div>`).join("")}
+        <div class="row-label">Step</div>
+        ${phases.map(e => `<div class="phase-cell"><strong>${escapeHtml(e.stepName)}</strong><small>${escapeHtml(e.journeyName)}</small></div>`).join("")}
 
         <div class="row-label">Action</div>
         ${phases.map(e => `<div class="grid-cell"><span class="sticky-note">${escapeHtml(e.customerAction || "Action TBC")}</span></div>`).join("")}
 
         <div class="row-label">Touchpoints</div>
-        ${phases.map(e => `<div class="grid-cell"><span class="pill">${escapeHtml(e.valueStream || "Value stream TBC")}</span><span class="pill ${hasOwnerGap(e) ? "amber" : "green"}">${escapeHtml(e.owner || "Owner TBC")}</span></div>`).join("")}
+        ${phases.map(e => `<div class="grid-cell touchpoint-cell"><span class="pill">${escapeHtml(e.contextName || "App TBC")}</span><small>${escapeHtml(e.pattern || "Pattern / screen TBC")}</small></div>`).join("")}
 
         <div class="row-label">Feelings</div>
         <div class="feelings-track" style="grid-column:2 / span ${Math.max(phases.length, 1)}"><div class="feeling-line"></div>${feelingPoints}</div>
@@ -274,13 +274,21 @@ function renderVisualMap(list) {
 
 function getMoodMeta(emotion = "Neutral") {
   const map = {
-    Positive: { icon: "😍" },
-    Neutral: { icon: "🙂" },
-    Frustrated: { icon: "😕" },
-    Confused: { icon: "😵" },
-    Anxious: { icon: "😰" }
+    Positive: { icon: "😍", level: 20 },
+    Neutral: { icon: "🙂", level: 50 },
+    Frustrated: { icon: "😕", level: 75 },
+    Confused: { icon: "😵", level: 85 },
+    Anxious: { icon: "😰", level: 92 }
   };
   return map[emotion] || map.Neutral;
+}
+
+function getHierarchySummary(phases) {
+  const valueStreams = unique(phases.map(e => e.valueStream)).length;
+  const apps = unique(phases.map(e => e.contextName)).length;
+  const journeys = unique(phases.map(e => e.journeyName)).length;
+  const steps = phases.length;
+  return `${valueStreams} value stream${valueStreams === 1 ? "" : "s"} · ${apps} app${apps === 1 ? "" : "s"} · ${journeys} journey${journeys === 1 ? "" : "s"} · ${steps} step${steps === 1 ? "" : "s"}`;
 }
 
 function renderCompare(list) {
